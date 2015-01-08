@@ -1,0 +1,11 @@
+language: ruby
+rvm:
+- 2.0.0
+deploy:
+  provider: rubygems
+  api_key:
+    secure: Y60yEL3rsnFf/OkzLeIgI6MgEIunB1Rjb0p/Ig7L/mU3w8528R+PA1h0C1O6R0Fh3WfxkUoJ7gdEzS0D5wNlzUl4svhsrBfJlqYbxIjRr8TyEPDQC5M1K0rgSzio7rEKPYpg/G4aBkBtxKGmw9EIlPiGtVx06OxUKuma2+8+Fv8=
+  gem: es-dump
+  on:
+    tags: true
+    repo: criteo/es-dump

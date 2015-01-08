@@ -1,0 +1,84 @@
+#!/usr/bin/env ruby
+require 'elasticsearch'
+require 'json'
+require 'optparse'
+
+options = {
+  :port => 9200,
+  :pagesize => 128,
+}
+
+$op = OptionParser.new
+$op.banner = 'Usage: es-dump [options]'
+$op.on('--host HOST', 'ES server hostname')                 {|v| options[:host] = v }
+$op.on('--port PORT', 'ES server port')                     {|v| options[:port] = v }
+$op.on('--index INDEX', 'Name of the index to export')      {|v| options[:index] = v }
+$op.on('--pagesize COUNT', 'Size of pages fetched from ES') {|v| options[:pagesize] = v.to_i }
+$op.on('--in INPUT', 'Input file for import mode')          {|v| options[:input] = v }
+$op.on('--out OUTPUT', 'Output file for export mode')       {|v| options[:output] = v }
+$op.on('-h', '--help', 'Prints this help message')          {|v| puts $op; exit }
+$op.parse!
+
+def error(message)
+  puts 'Error: ' + message
+  puts $op
+  exit
+end
+
+error 'You must specify a server hostname to connect to' if not options.has_key? :host
+error 'You must specify an index name' if not options.has_key? :index
+
+if not options.has_key? :output and not options.has_key? :input
+  error 'You must specify either an input or an output file'
+end
+
+puts "Connecting to ElasticSearch server at #{options[:host]}:#{options[:port]}"
+es = Elasticsearch::Client.new host: "#{options[:host]}:#{options[:port]}"
+offset = 0
+
+if options.has_key? :output
+  puts "Writing output file at #{options[:output]}"
+  output = File.new(options[:output], 'w')
+  loop do
+    begin
+      result = es.search index: options[:index],
+                         body: {
+                           from: offset,
+                           size: options[:pagesize],
+                         }
+    rescue Exception => e
+      error e.message
+    end
+
+    entries = result['hits']['hits']
+    for entry in entries
+      output.write JSON.pretty_generate(entry)
+      output.write "\n"
+    end
+
+    offset += entries.size
+    break if entries.size < options[:pagesize]
+  end
+
+  output.close
+elsif options.has_key? :input
+  puts "Reading input file at #{options[:input]}"
+  File.open(options[:input], 'r').each_line("}\n{") do |entry|
+    begin
+      entry = '{' + entry if entry[0] != '{' # Add missing { at the beginning
+      entry = entry[0..-2] # Remove extra { at the end
+      entry = JSON.parse entry
+
+      es.index index: options[:index],
+               type: entry['_type'],
+               id: entry['_id'],
+               body: entry['_source']
+    rescue Exception => e
+      error e.message
+    end
+
+    offset += 1
+  end
+end
+
+puts "Done, handled #{offset} entries"
